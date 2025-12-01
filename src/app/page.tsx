@@ -33,35 +33,61 @@ export default function Home() {
 
   const fetchData = async () => {
     try {
+      console.log('Fetching data from Supabase...');
+      
       // Fetch settings
-      const { data: settingsData } = await supabase
+      const { data: settingsData, error: settingsError } = await supabase
         .from('settings')
         .select('*')
         .single();
+      
+      if (settingsError) console.error('Settings error:', settingsError);
+      else console.log('Settings loaded:', settingsData);
       setSettings(settingsData);
 
       // Fetch categories
-      const { data: categoriesData } = await supabase
+      const { data: categoriesData, error: categoriesError } = await supabase
         .from('categories')
         .select('*')
         .eq('is_active', true)
         .order('sort_order');
+      
+      if (categoriesError) console.error('Categories error:', categoriesError);
+      else console.log('Categories loaded:', categoriesData);
       setCategories(categoriesData || []);
 
-      // Fetch menu items with images
-      const { data: itemsData } = await supabase
+      // Fetch menu items
+      const { data: itemsData, error: itemsError } = await supabase
         .from('menu_items')
-        .select(`
-          *,
-          images:item_images(*),
-          category:categories(*)
-        `)
+        .select('*')
         .eq('is_active', true)
         .order('sort_order');
-      setMenuItems(itemsData || []);
+      
+      if (itemsError) {
+        console.error('Menu items error:', itemsError);
+      } else {
+        console.log('Menu items loaded:', itemsData);
+        setMenuItems(itemsData || []);
+      }
+      
+      // Fetch images separately (don't block loading)
+      supabase
+        .from('item_images')
+        .select('*')
+        .then(({ data: imagesData }) => {
+          console.log('Images loaded:', imagesData);
+          if (imagesData) {
+            setMenuItems(prev => prev.map(item => ({
+              ...item,
+              images: imagesData.filter(img => img.menu_item_id === item.id)
+            })));
+          }
+        });
+        
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
+      console.log('Setting loading to false');
       setLoading(false);
     }
   };
@@ -155,7 +181,10 @@ export default function Home() {
   };
 
   const getPrimaryImage = (item: MenuItem) => {
-    if (!item.images || item.images.length === 0) return null;
+    if (!item.images || item.images.length === 0) {
+      // إذا لم تكن هناك صور، استخدم صورة افتراضية
+      return "https://placehold.co/400x300/e9e9e9/d4a574?text=محشي+البغدادي";
+    }
     const primary = item.images.find(img => img.is_primary);
     return primary?.image_url || item.images[0]?.image_url;
   };
@@ -273,18 +302,14 @@ export default function Home() {
                         onClick={() => setSelectedItem(item)}
                       >
                         <div className="relative h-28 sm:h-40 bg-gray-50">
-                          {getPrimaryImage(item) ? (
-                            <Image
-                              src={getPrimaryImage(item)!}
-                              alt={item.name_ar}
-                              fill
-                              className="object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <ChefHat className="w-8 h-8 sm:w-12 sm:h-12 text-gray-300" />
-                            </div>
-                          )}
+                          <Image
+                            src={getPrimaryImage(item)!}
+                            alt={item.name_ar}
+                            fill
+                            className="object-cover group-hover:scale-105 transition-transform duration-300"
+                            placeholder="blur"
+                            blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTllOWU5Ii8+PC9zdmc+"
+                          />
                           {item.is_featured && (
                             <div className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-[#d4a574] text-white px-1.5 py-0.5 sm:px-2 rounded-full text-[10px] sm:text-xs flex items-center gap-0.5">
                               <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3" />

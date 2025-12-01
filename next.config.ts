@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
         hostname: '**',
       },
     ],
+    unoptimized: true, // Disable Image Optimization API for static export
   },
   // Disable static pre-rendering for dashboard pages
   output: 'export',
