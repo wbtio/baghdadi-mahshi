@@ -27,6 +27,7 @@ export default function LoginPage() {
       if (error) throw error;
 
       if (data.user) {
+        router.refresh();
         router.push('/dashboard');
       }
     } catch (err: any) {

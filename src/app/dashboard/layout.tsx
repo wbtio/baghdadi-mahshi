@@ -30,18 +30,34 @@ export default function DashboardLayout({
   const pathname = usePathname();
 
   useEffect(() => {
-    checkUser();
-  }, []);
+    // التحقق من الجلسة الحالية
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session && pathname !== '/dashboard/login') {
+        router.push('/dashboard/login');
+      } else {
+        setUser(session?.user || null);
+      }
+      setLoading(false);
+    };
 
-  const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session && pathname !== '/dashboard/login') {
-      router.push('/dashboard/login');
-    } else {
-      setUser(session?.user);
-    }
-    setLoading(false);
-  };
+    checkUser();
+
+    // الاستماع لتغييرات حالة المصادقة
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        setUser(session.user);
+        setLoading(false);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        if (pathname !== '/dashboard/login') {
+          router.push('/dashboard/login');
+        }
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [pathname, router]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

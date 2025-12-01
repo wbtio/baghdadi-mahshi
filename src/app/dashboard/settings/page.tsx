@@ -1,13 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase, Settings } from '@/lib/supabase';
-import { Save, Store, Phone, Clock, Link as LinkIcon, Image as ImageIcon } from 'lucide-react';
+import { Save, Store, Phone, Clock, Link as LinkIcon, Image as ImageIcon, Upload, X, Loader2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     restaurant_name: '',
     description_ar: '',
@@ -55,6 +59,84 @@ export default function SettingsPage() {
       console.error('Error fetching settings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ضغط الصورة قبل الرفع
+  const compressImage = (file: File, maxWidth = 400, quality = 0.8): Promise<Blob> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new window.Image();
+      
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', quality);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // رفع الشعار
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingLogo(true);
+    try {
+      const compressedBlob = await compressImage(file, 200, 0.9);
+      const fileName = `logo-${Date.now()}.jpg`;
+      const filePath = `settings/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(filePath, compressedBlob, { contentType: 'image/jpeg', upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filePath);
+      setFormData(prev => ({ ...prev, logo_url: publicUrl }));
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      alert('فشل رفع الشعار');
+    } finally {
+      setUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  };
+
+  // رفع صورة الغلاف
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingCover(true);
+    try {
+      const compressedBlob = await compressImage(file, 1200, 0.85);
+      const fileName = `cover-${Date.now()}.jpg`;
+      const filePath = `settings/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(filePath, compressedBlob, { contentType: 'image/jpeg', upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filePath);
+      setFormData(prev => ({ ...prev, cover_image_url: publicUrl }));
+    } catch (error) {
+      console.error('Error uploading cover:', error);
+      alert('فشل رفع صورة الغلاف');
+    } finally {
+      setUploadingCover(false);
+      if (coverInputRef.current) coverInputRef.current.value = '';
     }
   };
 
@@ -265,39 +347,117 @@ export default function SettingsPage() {
         </div>
 
         {/* Images */}
-        <div className="bg-white rounded-xl p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-6">
-            <ImageIcon className="w-6 h-6 text-[#d4a574]" />
-            <h2 className="text-lg font-bold">الصور</h2>
+        <div className="bg-white rounded-xl p-4 sm:p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-4 sm:mb-6">
+            <ImageIcon className="w-5 h-5 sm:w-6 sm:h-6 text-[#d4a574]" />
+            <h2 className="text-base sm:text-lg font-bold">الصور</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            {/* الشعار */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                رابط الشعار
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                شعار المطعم
               </label>
               <input
-                type="url"
-                value={formData.logo_url}
-                onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
-                className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#d4a574]"
-                placeholder="https://..."
-                dir="ltr"
+                ref={logoInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoUpload}
+                className="hidden"
+                id="logo-upload"
               />
+              
+              {formData.logo_url ? (
+                <div className="relative">
+                  <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl overflow-hidden border-2 border-[#d4a574] bg-gray-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={formData.logo_url} alt="الشعار" className="w-full h-full object-cover" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, logo_url: '' })}
+                    className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <label
+                    htmlFor="logo-upload"
+                    className="absolute bottom-2 right-2 bg-white/90 p-1.5 rounded-lg shadow cursor-pointer hover:bg-white"
+                  >
+                    <Upload className="w-4 h-4 text-gray-600" />
+                  </label>
+                </div>
+              ) : (
+                <label
+                  htmlFor="logo-upload"
+                  className={`flex flex-col items-center justify-center w-24 h-24 sm:w-32 sm:h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
+                    uploadingLogo ? 'border-gray-300 bg-gray-50' : 'border-[#d4a574] hover:bg-[#d4a574]/5'
+                  }`}
+                >
+                  {uploadingLogo ? (
+                    <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+                  ) : (
+                    <>
+                      <Upload className="w-6 h-6 text-[#d4a574] mb-1" />
+                      <span className="text-xs text-[#d4a574]">رفع الشعار</span>
+                    </>
+                  )}
+                </label>
+              )}
             </div>
 
+            {/* صورة الغلاف */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                رابط صورة الغلاف
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                صورة الغلاف
               </label>
               <input
-                type="url"
-                value={formData.cover_image_url}
-                onChange={(e) => setFormData({ ...formData, cover_image_url: e.target.value })}
-                className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#d4a574]"
-                placeholder="https://..."
-                dir="ltr"
+                ref={coverInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleCoverUpload}
+                className="hidden"
+                id="cover-upload"
               />
+              
+              {formData.cover_image_url ? (
+                <div className="relative">
+                  <div className="w-full h-32 sm:h-40 rounded-xl overflow-hidden border-2 border-[#d4a574] bg-gray-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={formData.cover_image_url} alt="الغلاف" className="w-full h-full object-cover" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, cover_image_url: '' })}
+                    className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <label
+                    htmlFor="cover-upload"
+                    className="absolute bottom-2 right-2 bg-white/90 p-1.5 rounded-lg shadow cursor-pointer hover:bg-white"
+                  >
+                    <Upload className="w-4 h-4 text-gray-600" />
+                  </label>
+                </div>
+              ) : (
+                <label
+                  htmlFor="cover-upload"
+                  className={`flex flex-col items-center justify-center w-full h-32 sm:h-40 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
+                    uploadingCover ? 'border-gray-300 bg-gray-50' : 'border-[#d4a574] hover:bg-[#d4a574]/5'
+                  }`}
+                >
+                  {uploadingCover ? (
+                    <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+                  ) : (
+                    <>
+                      <Upload className="w-6 h-6 text-[#d4a574] mb-1" />
+                      <span className="text-xs text-[#d4a574]">رفع صورة الغلاف</span>
+                    </>
+                  )}
+                </label>
+              )}
             </div>
           </div>
         </div>

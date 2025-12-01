@@ -33,61 +33,31 @@ export default function Home() {
 
   const fetchData = async () => {
     try {
-      console.log('Fetching data from Supabase...');
-      
-      // Fetch settings
-      const { data: settingsData, error: settingsError } = await supabase
-        .from('settings')
-        .select('*')
-        .single();
-      
-      if (settingsError) console.error('Settings error:', settingsError);
-      else console.log('Settings loaded:', settingsData);
-      setSettings(settingsData);
+      // جلب البيانات الأساسية أولاً (بدون الصور) لعرض الصفحة بسرعة
+      const [settingsRes, categoriesRes, itemsRes] = await Promise.all([
+        supabase.from('settings').select('*').single(),
+        supabase.from('categories').select('*').eq('is_active', true).order('sort_order'),
+        supabase.from('menu_items').select('*').eq('is_active', true).order('sort_order')
+      ]);
 
-      // Fetch categories
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('is_active', true)
-        .order('sort_order');
+      setSettings(settingsRes.data);
+      setCategories(categoriesRes.data || []);
+      setMenuItems(itemsRes.data || []);
+      setLoading(false); // إنهاء التحميل فوراً
       
-      if (categoriesError) console.error('Categories error:', categoriesError);
-      else console.log('Categories loaded:', categoriesData);
-      setCategories(categoriesData || []);
-
-      // Fetch menu items
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('is_active', true)
-        .order('sort_order');
-      
-      if (itemsError) {
-        console.error('Menu items error:', itemsError);
-      } else {
-        console.log('Menu items loaded:', itemsData);
-        setMenuItems(itemsData || []);
-      }
-      
-      // Fetch images separately (don't block loading)
-      supabase
+      // جلب الصور في الخلفية (لا تؤخر عرض الصفحة)
+      const { data: images } = await supabase
         .from('item_images')
-        .select('*')
-        .then(({ data: imagesData }) => {
-          console.log('Images loaded:', imagesData);
-          if (imagesData) {
-            setMenuItems(prev => prev.map(item => ({
-              ...item,
-              images: imagesData.filter(img => img.menu_item_id === item.id)
-            })));
-          }
-        });
-        
+        .select('*');
+      
+      if (images && images.length > 0) {
+        setMenuItems(prev => prev.map(item => ({
+          ...item,
+          images: images.filter(img => img.menu_item_id === item.id) as ItemImage[]
+        })));
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
-    } finally {
-      console.log('Setting loading to false');
       setLoading(false);
     }
   };
@@ -301,14 +271,13 @@ export default function Home() {
                         className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all cursor-pointer group"
                         onClick={() => setSelectedItem(item)}
                       >
-                        <div className="relative h-28 sm:h-40 bg-gray-50">
-                          <Image
-                            src={getPrimaryImage(item)!}
+                        <div className="relative h-28 sm:h-40 bg-gray-100">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={getPrimaryImage(item)}
                             alt={item.name_ar}
-                            fill
-                            className="object-cover group-hover:scale-105 transition-transform duration-300"
-                            placeholder="blur"
-                            blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTllOWU5Ii8+PC9zdmc+"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
                           />
                           {item.is_featured && (
                             <div className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-[#d4a574] text-white px-1.5 py-0.5 sm:px-2 rounded-full text-[10px] sm:text-xs flex items-center gap-0.5">
@@ -377,18 +346,12 @@ export default function Home() {
           <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             {/* الصورة الرئيسية */}
             <div className="relative h-72 bg-gray-100">
-              {selectedItem.images && selectedItem.images.length > 0 ? (
-                <Image
-                  src={selectedItem.images[selectedImageIndex]?.image_url || getPrimaryImage(selectedItem)!}
-                  alt={selectedItem.name_ar}
-                  fill
-                  className="object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <ChefHat className="w-24 h-24 text-gray-300" />
-                </div>
-              )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={selectedItem.images?.[selectedImageIndex]?.image_url || getPrimaryImage(selectedItem)}
+                alt={selectedItem.name_ar}
+                className="w-full h-full object-cover"
+              />
               <button
                 onClick={() => { setSelectedItem(null); setSelectedImageIndex(0); }}
                 className="absolute top-4 left-4 bg-white/90 p-2 rounded-full shadow-lg"
@@ -412,7 +375,7 @@ export default function Home() {
               <div className="flex gap-2 p-4 overflow-x-auto bg-gray-50">
                 {selectedItem.images.map((img, idx) => (
                   <button
-                    key={img.id}
+                    key={idx}
                     onClick={() => setSelectedImageIndex(idx)}
                     className={`relative w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden transition-all ${
                       selectedImageIndex === idx 
@@ -420,7 +383,8 @@ export default function Home() {
                         : 'opacity-70 hover:opacity-100'
                     }`}
                   >
-                    <Image src={img.image_url} alt={`${selectedItem.name_ar} ${idx + 1}`} fill className="object-cover" />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img.image_url} alt={`${selectedItem.name_ar} ${idx + 1}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
