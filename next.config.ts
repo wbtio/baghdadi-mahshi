@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Disable static pre-rendering for dashboard pages
+  output: 'export',
+  // Disable static optimization for dashboard pages
+  staticPageGenerationTimeout: 1000,
 };
 
 export default nextConfig;
