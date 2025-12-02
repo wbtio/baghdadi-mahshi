@@ -30,7 +30,7 @@ export const supabase = new Proxy({} as SupabaseClient, {
   },
 });
 
-// Types
+// Typeswbtio
 export interface Category {
   id: string;
   name_ar: string;
